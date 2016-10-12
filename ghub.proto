@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package ghub;
+
+service GHubServer
+{
+	rpc Register (ClientInfo) returns (ReturnState) {}
+	rpc RemoteCall (CallInfo) returns (ReturnState) {}
+}
+
+service GHubClient
+{
+	rpc ForwardCall (CallInfo) returns (ReturnState) {} 
+}
+
+message ClientInfo
+{
+	string ip = 1;
+	int32 port = 2;
+	string name = 3;
+}
+
+message CallInfo
+{
+	int32 typ = 1;
+	string entity = 2;
+	string method = 3;
+	bytes args = 4;
+}
+
+message ReturnState
+{
+	int32 ret = 1;
+}
