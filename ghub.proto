@@ -22,10 +22,11 @@ message ClientInfo
 
 message CallInfo
 {
-	int32 typ = 1;
-	string entity = 2;
-	string method = 3;
-	bytes args = 4;
+    string dst = 1;
+	int32 typ = 2;
+	string entity = 3;
+	string method = 4;
+	bytes args = 5;
 }
 
 message ReturnState
