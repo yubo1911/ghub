@@ -9,13 +9,13 @@ HUB_PORT = 50011
 
 
 class Channel(object):
-    def __init__(self, channel, timestamp):
-        self.channel = channel
+    def __init__(self, stub, timestamp):
+        self.stub = stub
         self.timestamp = timestamp
 
 
 class GHubServer(ghub_pb2.GHubServerServicer):
-    def __int__(self):
+    def __init__(self):
         self.clients = {}
 
     def Register(self, request, context):
@@ -23,7 +23,8 @@ class GHubServer(ghub_pb2.GHubServerServicer):
         if request.name not in self.clients:
             addr = '{}:{}'.format(request.ip, request.port)
             channel = grpc.insecure_channel(addr)
-            self.clients[request.name] = Channel(channel, now)
+            stub = ghub_pb2.GHubClientStub(channel)
+            self.clients[request.name] = Channel(stub, now)
             logging.info('client {} from {} registered.'.format(
                 request.name, addr))
         else:
@@ -35,8 +36,10 @@ class GHubServer(ghub_pb2.GHubServerServicer):
         if dst_name not in self.clients:
             return ghub_pb2.ReturnState(ret=-1)
         channel = self.clients[dst_name]
-        stub = ghub_pb2.GHubClientStub(channel)
-        return stub.ForwardCall(request)
+        stub = channel.stub
+        ret = stub.ForwardCall.future(request)
+        ret.result()
+        return ghub_pb2.ReturnState(ret=0)
 
     def CheckChannels(self):
         now = time.time()
@@ -64,4 +67,6 @@ def serve():
         server.stop(0)
 
 if __name__ == "__main__":
+    import sys
+    logging.basicConfig(stream=sys.stdout)
     serve()
