@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 from concurrent import futures
 import grpc
@@ -7,8 +8,13 @@ import zlib
 import threading
 import time
 import logging
+from docopt import docopt
 
 entities = {}
+
+logging.basicConfig()
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 class GHubClient(ghub_pb2.GHubClientServicer):
@@ -41,7 +47,7 @@ def serve(ip, port):
     ghub_client = GHubClient()
     ghub_pb2.add_GHubClientServicer_to_server(ghub_client, client)
     client.add_insecure_port('{}:{}'.format(ip, port))
-    logging.error('{}:{}'.format(ip, port))
+    logger.info('client listening on {}:{}'.format(ip, port))
     client.start()
     try:
         while True:
@@ -51,9 +57,11 @@ def serve(ip, port):
 
 
 class GHubProxy(object):
-    def __init__(self, hub_ip, hub_port):
+    def __init__(self, hub_ip, hub_port, name, port):
         channel = grpc.insecure_channel('{}:{}'.format(hub_ip, hub_port))
         self.stub = ghub_pb2.GHubServerStub(channel)
+        self.port = port
+        self.name = name
 
     def CallMethod(self, remote, typ, entity, method, args):
         byte_args = zlib.compress(cPickle.dumps(args, -1))
@@ -66,8 +74,8 @@ class GHubProxy(object):
     def Register(self):
         self.stub.Register(ghub_pb2.ClientInfo(
             ip='localhost',
-            port=50012,
-            name='client1'))
+            port=self.port,
+            name=self.name))
 
 
 def HeartBeat(proxy):
@@ -77,7 +85,7 @@ def HeartBeat(proxy):
 
 
 def TestMethod(a, b):
-    print 'TestMethod called with: ', a, b
+    logger.info('TestMethod called with: {}, {}'.format(a, b))
 
 
 class Entity(object):
@@ -85,15 +93,30 @@ class Entity(object):
         self.name = name
 
     def TestMethod(self, a, b):
-        print '{}.TestMethod called with: {} {}'.format(self.name, a, b)
+        logger.info('{}.TestMethod called with: {} {}'.format(self.name, a, b))
 
 if __name__ == "__main__":
-    import sys
-    logging.basicConfig(stream=sys.stdout)
-    t1 = threading.Thread(target=serve, args=('[::]', 50012))
+    doc = """Usage:
+        ghub_client.py -p <port> -s <hub_port> -n <name>
+        ghub_client.py (-h | --help)
+
+    Options:
+        -h --help       Show this screen
+        -p              Listening port
+        -s              Hub port
+        -n              Client name
+    """
+    args = docopt(doc, version="ghub_client ver1.0")
+    port = int(args['<port>'])
+    hub_port = int(args['<hub_port>'])
+    client_name = args['<name>']
+
+    t1 = threading.Thread(target=serve, args=('[::]', port))
+    t1.deamon = True
     t1.start()
-    proxy = GHubProxy('localhost', 50011)
+    proxy = GHubProxy('localhost', hub_port, client_name, port)
     t2 = threading.Thread(target=HeartBeat, args=(proxy,))
+    t2.deamon = True
     t2.start()
 
     user = Entity('user')
@@ -101,9 +124,12 @@ if __name__ == "__main__":
     account = Entity('account')
     entities[account.name] = account
 
-    time.sleep(1)
+    time.sleep(5)
     for a, b in zip(range(1, 10), range(11, 20)):
-        proxy.CallMethod('client1', 1, '', 'TestMethod', (a, b))
-        proxy.CallMethod('client1', 2, 'user', 'TestMethod', (a, b))
-        proxy.CallMethod('client1', 2, 'account', 'TestMethod', (a, b))
-        time.sleep(10)
+        proxy.CallMethod(client_name, 1, '', 'TestMethod', (a, b))
+        proxy.CallMethod(client_name, 2, 'user', 'TestMethod', (a, b))
+        proxy.CallMethod(client_name, 2, 'account', 'TestMethod', (a, b))
+        time.sleep(2)
+    logger.info("Prepare to exit.")
+    import sys
+    sys.exit(0)

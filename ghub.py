@@ -1,11 +1,15 @@
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 from concurrent import futures
 import grpc
 import ghub_pb2
 import time
 import logging
+from docopt import docopt
 
-HUB_PORT = 50011
+logging.basicConfig()
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 class Channel(object):
@@ -25,7 +29,7 @@ class GHubServer(ghub_pb2.GHubServerServicer):
             channel = grpc.insecure_channel(addr)
             stub = ghub_pb2.GHubClientStub(channel)
             self.clients[request.name] = Channel(stub, now)
-            logging.info('client {} from {} registered.'.format(
+            logger.info('client {} from {} registered.'.format(
                 request.name, addr))
         else:
             self.clients[request.name].timestamp = now
@@ -50,14 +54,24 @@ class GHubServer(ghub_pb2.GHubServerServicer):
 
         for name in rm_channels:
             self.clients.pop(name, None)
-            logging.info('client {} disconnected.'.format(name))
+            logger.info('client {} disconnected.'.format(name))
 
 
 def serve():
+    doc = """Usage:
+        ghub.py -p <port>
+        ghub.py (-h | --help)
+
+    Options:
+        -h --help       Show this screen
+        -p              Specify the listening port
+    """
+    args = docopt(doc, version="ghub ver1.0")
+    hub_port = int(args['<port>'])
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     ghub_server = GHubServer()
     ghub_pb2.add_GHubServerServicer_to_server(ghub_server, server)
-    server.add_insecure_port('[::]:{}'.format(HUB_PORT))
+    server.add_insecure_port('[::]:{}'.format(hub_port))
     server.start()
     try:
         while True:
@@ -67,6 +81,4 @@ def serve():
         server.stop(0)
 
 if __name__ == "__main__":
-    import sys
-    logging.basicConfig(stream=sys.stdout)
     serve()
