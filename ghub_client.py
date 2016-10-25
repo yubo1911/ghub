@@ -16,6 +16,8 @@ logging.basicConfig()
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+shutdown_event = threading.Event()
+
 
 class GHubClient(ghub_pb2.GHubClientServicer):
     def ForwardCall(self, request, context):
@@ -49,11 +51,7 @@ def serve(ip, port):
     client.add_insecure_port('{}:{}'.format(ip, port))
     logger.info('client listening on {}:{}'.format(ip, port))
     client.start()
-    try:
-        while True:
-            time.sleep(10)
-    except KeyboardInterrupt:
-        client.stop(0)
+    return client
 
 
 class GHubProxy(object):
@@ -79,7 +77,7 @@ class GHubProxy(object):
 
 
 def HeartBeat(proxy):
-    while True:
+    while not shutdown_event.is_set():
         proxy.Register()
         time.sleep(10)
 
@@ -94,6 +92,7 @@ class Entity(object):
 
     def TestMethod(self, a, b):
         logger.info('{}.TestMethod called with: {} {}'.format(self.name, a, b))
+
 
 if __name__ == "__main__":
     doc = """Usage:
@@ -111,9 +110,7 @@ if __name__ == "__main__":
     hub_port = int(args['<hub_port>'])
     client_name = args['<name>']
 
-    t1 = threading.Thread(target=serve, args=('[::]', port))
-    t1.deamon = True
-    t1.start()
+    client_stub = serve('[::]', port)
     proxy = GHubProxy('localhost', hub_port, client_name, port)
     t2 = threading.Thread(target=HeartBeat, args=(proxy,))
     t2.deamon = True
@@ -124,12 +121,17 @@ if __name__ == "__main__":
     account = Entity('account')
     entities[account.name] = account
 
-    time.sleep(5)
-    for a, b in zip(range(1, 10), range(11, 20)):
+    time.sleep(2)
+    for a, b in zip(range(1, 3), range(11, 13)):
         proxy.CallMethod(client_name, 1, '', 'TestMethod', (a, b))
         proxy.CallMethod(client_name, 2, 'user', 'TestMethod', (a, b))
         proxy.CallMethod(client_name, 2, 'account', 'TestMethod', (a, b))
-        time.sleep(2)
-    logger.info("Prepare to exit.")
-    import sys
-    sys.exit(0)
+        time.sleep(1)
+
+    try:
+        while True:
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.error('KeyboardInterrupt')
+        shutdown_event.set()
+        client_stub.stop(0)
